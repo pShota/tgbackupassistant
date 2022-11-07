@@ -1,0 +1,16 @@
+# temp upload folder
+tmp/
+
+# config
+config/
+
+# pycharm
+venv/
+
+# dev
+.git/
+.idea/
+.vscode/
+*.md
+*.session
+*.session-journal
