@@ -335,5 +335,5 @@ if __name__ == '__main__':
                 myObserver.stop()
                 print(str(ex))
                 exit(1)
-
     print("End of script")
+    exit(0)
