@@ -13,6 +13,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pyffmpeg import FFmpeg
 import PIL.Image
+from time import sleep
 
 def checkValidFile(filePath):
     base = os.path.basename(filePath)
@@ -33,7 +34,7 @@ class WatchDogWorker(FileSystemEventHandler):
         self.queue = multiThreadQueue
 
     # watch dog callback, on different thread
-    def on_modified(self, event):
+    def on_closed(self, event):
         if os.path.isfile(event.src_path):
 
             print("modified file:", event.src_path)
@@ -45,6 +46,7 @@ class WatchDogWorker(FileSystemEventHandler):
 
 class ScanWorker:
     def __init__(self, configDict: typing.Dict, multiThreadQueue: queue):
+        self.script_dir = os.getcwd()
         self.queue = multiThreadQueue
         self.api_id = configDict['api_id']
         self.api_hash = configDict['api_hash']
@@ -53,13 +55,22 @@ class ScanWorker:
         self.target_path = configDict['target_path']
         self.waitSecond = configDict['flood_wait_sec']
         self.force_send_file = configDict['force_send_file']
-        self.temp_folder = './tmp'
-        self.db_name = "./config/" + os.path.basename(self.target_path) + ".db"
+        
+        self.temp_folder = os.path.join(self.script_dir, 'tmp')
+
+        self.db_path = os.path.join(self.script_dir, 'config/' + os.path.basename(self.target_path) + ".db")
 
         # start tg client
-        self.tg_client = TelegramClient("./config/" + self.session_name, self.api_id, self.api_hash)
+        self.session_file = os.path.join(self.script_dir, "config/" + self.session_name)
+        if not os.path.exists(self.session_file):
+            print("Please run getSession.py to get the session file and restart the container")
+            while True:
+                sleep(1000000)
+
+        self.tg_client = TelegramClient(self.session_file, self.api_id, self.api_hash)
         self.tg_client.start()
-        # avoid easy flood wait
+
+        # avoid easy flood wait, set entity in api request
         self.channelEntity = self.tg_client.get_entity(self.tg_channel)
 
     def cleanUp(self):
@@ -216,7 +227,7 @@ class ScanWorker:
     def scanFolder(self):
         print("scan folder:" + self.target_path)
 
-        dbCon = sqlite3.connect(self.db_name)
+        dbCon = sqlite3.connect(self.db_path)
         cur = dbCon.cursor()
         cur.execute("""
                         CREATE TABLE IF NOT EXISTS 'FileStat' (
@@ -274,7 +285,7 @@ class ScanWorker:
 
     def workOnQueue(self):
         if not self.queue.empty():
-            dbCon = sqlite3.connect(self.db_name)
+            dbCon = sqlite3.connect(self.db_path)
             cur = dbCon.cursor()
 
             while not self.queue.empty():
@@ -293,10 +304,12 @@ class ScanWorker:
 
 
 if __name__ == '__main__':
+    print('backupAssistant.py start!')
 
+    configJsonPath = os.path.join(os.getcwd(), 'config/config.json')
     configData = None
     try:
-        with open('./config/config.json', 'r') as f:
+        with open(configJsonPath, 'r') as f:
             configData = json.load(f)
     except Exception as exp:
         print(f'IO Error on config.json:' + str(exp))
