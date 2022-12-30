@@ -2,9 +2,11 @@
 
 ## Backup files to Telegram
 
-This tool upload files from specific folder in your Synology NAS to a specific Telegram channel of your choice.
+This tool upload files from specific folder in Synology NAS to a specific Telegram channel of your choice.
 
 The script make use of [Telethon](https://github.com/LonamiWebs/Telethon) and [pyffmpeg](https://mhaller.github.io/pyffmpeg/)
+
+It should also works for other linux system with some modification.
 
 ## Setup
 
@@ -51,11 +53,11 @@ full path of `target_path` should set in `volume` path of docker command
 
 `flood_wait_sec` is the second we wait until next upload file perform, too short telegram will stop you from uploading, 6 seconds is usually the best.
 
-`scan_folder` true to scan all files and upload of target_folder
+`scan_folder` true to scan all files and upload of target_folder(include subfolder)
 
-`watchdog` : true to enable file monitoring
+`watchdog` : true to enable file monitoring, upload on closed file, suitable for file stream (Surveillance Station)
 
-`force_send_file` will force all file to send as it is without any compression.
+`force_send_file` will force all file to send as file without any compression.
 
 5. create container from image, here is docker-compose file
 
@@ -94,7 +96,14 @@ after login, it generated a session file `<session name>.session` in /app/config
 7. restart container again
 
 
+## Misc
 
+1. Script will change HEIC file to JPG where TG not supporting HEIC
 
+2. file size limit is 2GB and this script will not split larger file (TODO)
+
+3. large resoluton image 2560 is max limit, it will automatically send as file
+
+4. only one Telegram account can use per container
 
 
