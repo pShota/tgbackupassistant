@@ -8,18 +8,18 @@ It should also works for other linux system with some modification.
 
 ## Setup
 
-1. First you need to get API ID and Hash from Telegram
+#### 1. First you need to get API ID and Hash from Telegram
 
-  Follow [instructions](https://core.telegram.org/api/obtaining_api_id) to create a app
+Follow [instructions](https://core.telegram.org/api/obtaining_api_id) to create a app
 
 
-2. download docker image:
+#### 2. download docker image:
 
 ```
 docker pull pshota/tgbackupassistant:x86_64-0.3
 ```
 
-3. setup config/config.json as following:
+#### 3. setup config.json as following:
 
 ```json
 {
@@ -57,7 +57,11 @@ full path of `target_path` should set in `volume` path of docker command
 
 `force_send_file` will force all file to send as file without any compression.
 
-5. create container from image, here is docker-compose file
+This config.json will map to container file /app/config/config.json
+
+---
+
+#### 4. create container from image, here is docker-compose file
 
 ```
 version: "3"
@@ -73,13 +77,15 @@ services:
 
 the first run will fail because there isn't a telegram session file.
 
-6. run getSession.py directly from container to login telegram and get session files
+---
+
+#### 5. run getSession.py directly from container to login telegram and get session files
 
 login into your container
 
-```
-sudo docker exec -it tgbackupassistant bash
-```
+  ```
+  sudo docker exec -it tgbackupassistant bash
+  ```
 
 and run
 
@@ -91,7 +97,9 @@ where <session name> is the name you named it in eariler step
 
 after login, it generated a session file `<session name>.session` in /app/config
 
-7. restart container again
+---
+
+#### 6. restart container again
 
 
 ## Misc
@@ -100,7 +108,7 @@ after login, it generated a session file `<session name>.session` in /app/config
 
 2. file size limit is 2GB and this script will not split larger file (TODO)
 
-3. large resoluton image 2560 is max limit, it will automatically send as file
+3. large resoluton image (>2560 pixel) will automatically send as file, Telegram size limit.
 
 4. only one Telegram account can use per container
 
