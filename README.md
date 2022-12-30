@@ -93,7 +93,7 @@ and run
 python getSession.py <session name>, <app id>, <app hash>
 ```
 
-where <session name> is the name you named it in eariler step
+where `<session name>` is the name you named it in eariler step
 
 after login, it generated a session file `<session name>.session` in /app/config
 
