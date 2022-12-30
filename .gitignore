@@ -129,3 +129,9 @@ dmypy.json
 .pyre/
 
 .idea/
+
+testfolder/
+config.json
+*.session
+*.session-journal
+*.db

@@ -14,6 +14,27 @@ from watchdog.events import FileSystemEventHandler
 from pyffmpeg import FFmpeg
 import PIL.Image
 from time import sleep
+import psutil
+
+
+s_api_id = 0
+s_api_hash = 0
+s_session_name = ""
+s_tgclient = None
+s_flood_wait_sec = 6
+
+
+def has_handle(fpath):
+    for proc in psutil.process_iter():
+        try:
+            for item in proc.open_files():
+                if fpath == item.path:
+                    return True
+        except Exception:
+            pass
+
+    return False
+
 
 def checkValidFile(filePath):
     base = os.path.basename(filePath)
@@ -30,11 +51,14 @@ def checkValidFile(filePath):
 
 
 class WatchDogWorker(FileSystemEventHandler):
-    def __init__(self, multiThreadQueue: queue):
-        self.queue = multiThreadQueue
+    def __init__(self, fileQueue: queue):
+        self.queue = fileQueue
+
+    # def on_any_event(self, event):
+    #     print(f"event_type:{event.event_type} {event.src_path}")
 
     # watch dog callback, on different thread
-    def on_closed(self, event):
+    def on_modified(self, event):
         if os.path.isfile(event.src_path):
 
             print("modified file:", event.src_path)
@@ -45,37 +69,41 @@ class WatchDogWorker(FileSystemEventHandler):
 
 
 class ScanWorker:
-    def __init__(self, configDict: typing.Dict, multiThreadQueue: queue):
+    def __init__(self, configDict: typing.Dict, fileQueue: queue):
         self.script_dir = os.getcwd()
-        self.queue = multiThreadQueue
-        self.api_id = configDict['api_id']
-        self.api_hash = configDict['api_hash']
+        self.queue = fileQueue
         self.tg_channel = configDict['tg_channel']
-        self.session_name = configDict['session_name']
         self.target_path = configDict['target_path']
-        self.waitSecond = configDict['flood_wait_sec']
         self.force_send_file = configDict['force_send_file']
-        
         self.temp_folder = os.path.join(self.script_dir, 'tmp')
-
         self.db_path = os.path.join(self.script_dir, 'config/' + os.path.basename(self.target_path) + ".db")
 
-        # start tg client
-        self.session_file = os.path.join(self.script_dir, "config/" + self.session_name)
-        if not os.path.exists(self.session_file):
-            print("Please run getSession.py to get the session file and restart the container")
-            while True:
-                sleep(1000000)
-
-        self.tg_client = TelegramClient(self.session_file, self.api_id, self.api_hash)
-        self.tg_client.start()
-
         # avoid easy flood wait, set entity in api request
-        self.channelEntity = self.tg_client.get_entity(self.tg_channel)
+        self.channelEntity = s_tgclient.get_entity(self.tg_channel)
+        self.initDB()
 
-    def cleanUp(self):
-        if self.tg_client is not None:
-            self.tg_client.disconnect()
+        # remove old temp folder
+        if os.path.exists(self.temp_folder):
+            shutil.rmtree(self.temp_folder)
+        os.mkdir(self.temp_folder)
+
+    def initDB(self):
+        dbCon = sqlite3.connect(self.db_path)
+        cur = dbCon.cursor()
+        cur.execute("""
+                                CREATE TABLE IF NOT EXISTS 'FileStat' (
+                                    'file_name'	TEXT NOT NULL,
+                                    'modified_date'	TEXT,
+                                    'is_uploaded'	INTEGER,
+                                    'full_path'	TEXT NOT NULL
+                                ) 
+                            """)
+        dbCon.commit()
+        cur.close()
+        dbCon.close()
+
+
+
 
     # Printing upload progress
     def progressCallback(self, current, total):
@@ -147,7 +175,7 @@ class ScanWorker:
                 image.save(thumbnail)
                 image.close()
                 print("send as file:" + str(sendForFile))
-                self.tg_client.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
+                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
                                         progress_callback=self.progressCallback, force_document=sendForFile)
                 os.remove(thumbnail)
 
@@ -169,17 +197,17 @@ class ScanWorker:
                 image.close()
 
                 print("send as file:" + str(sendForFile))
-                self.tg_client.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
+                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
                                          progress_callback=self.progressCallback, force_document=sendForFile)
                 os.remove(thumbnail)
 
             else:
                 print("send as file:" + str(sendForFile))
-                self.tg_client.send_file(entity=self.channelEntity, file=fileFullPath, background=True,
+                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True,
                                          progress_callback=self.progressCallback, force_document=sendForFile)
 
-            print(f"send file completed sleep for {self.waitSecond} sec")
-            time.sleep(self.waitSecond)
+            print(f"send file completed sleep for {s_flood_wait_sec} sec")
+            time.sleep(s_flood_wait_sec)
 
             return True
 
@@ -229,20 +257,6 @@ class ScanWorker:
 
         dbCon = sqlite3.connect(self.db_path)
         cur = dbCon.cursor()
-        cur.execute("""
-                        CREATE TABLE IF NOT EXISTS 'FileStat' (
-                            'file_name'	TEXT NOT NULL,
-                            'modified_date'	TEXT,
-                            'is_uploaded'	INTEGER,
-                            'full_path'	TEXT NOT NULL
-                        ) 
-                    """)
-        dbCon.commit()
-
-        if os.path.exists(self.temp_folder):
-            shutil.rmtree(self.temp_folder)
-
-        os.mkdir(self.temp_folder)
         # iterate over files in
         # that directory
         for root, dirs, files in os.walk(self.target_path):
@@ -264,7 +278,7 @@ class ScanWorker:
                     if record is None:
                         # insert a record
                         if not self.insertDB(cur, dbCon, filename, lastModified, fileFullPath):
-                            return False
+                            continue
                     else:
                         if record[2]:  # uploaded boolean
                             print("Skip uploaded file:" + fileFullPath)
@@ -272,7 +286,7 @@ class ScanWorker:
 
                 except sqlite3.Error as ex:
                     print(f'Sql Error on {fileFullPath}:' + str(ex))
-                    return False
+                    continue
 
                 if self.sendFile(fileFullPath):
                     if not self.updateDBonSuccess(cur, dbCon, filename, lastModified):
@@ -285,68 +299,113 @@ class ScanWorker:
 
     def workOnQueue(self):
         if not self.queue.empty():
+            # only process 1 item at a time, give other worker chance to upload
+            # while all workers share the same tg session (thus they can't upload in parallel)
+            fileFullPath = self.queue.get()
+
+            # to avoid race condition
+            if has_handle(fileFullPath):
+                print("Waiting file to finish writing:" + fileFullPath)
+                time.sleep(2)
+
+            if not os.path.exists(fileFullPath):
+                print(f"Error: {fileFullPath} not exist anymore!")
+                return
+
             dbCon = sqlite3.connect(self.db_path)
             cur = dbCon.cursor()
+            filename = os.path.basename(fileFullPath)
+            lastModified = str(os.path.getmtime(fileFullPath))
 
-            while not self.queue.empty():
-                fileFullPath = self.queue.get()
-                if not os.path.exists(fileFullPath):
-                    print(f"Error: {fileFullPath} not exist anymore!")
-                    continue
-                filename = os.path.basename(fileFullPath)
-                lastModified = str(os.path.getmtime(fileFullPath))
-                if self.insertDB(cur, dbCon, filename, lastModified, fileFullPath):
-                    if self.sendFile(fileFullPath):
-                        self.updateDBonSuccess(cur, dbCon, filename, lastModified)
+            try:
+                # check exist
+                res = cur.execute(
+                    f"SELECT * FROM FileStat WHERE file_name='{filename}' AND modified_date='{lastModified}'")
+                record = res.fetchone()
+
+                if record is None:
+                    # insert a record
+                    if self.insertDB(cur, dbCon, filename, lastModified, fileFullPath):
+                        if self.sendFile(fileFullPath):
+                            self.updateDBonSuccess(cur, dbCon, filename, lastModified)
+                else:
+                    if record[2]:  # uploaded boolean
+                        print("Skip uploaded file:" + fileFullPath)
+                    else:
+                        if self.sendFile(fileFullPath):
+                            self.updateDBonSuccess(cur, dbCon, filename, lastModified)
+
+            except sqlite3.Error as ex:
+                print(f'Sql Error on {fileFullPath}:' + str(ex))
 
             cur.close()
             dbCon.close()
-
+        return self.queue.empty()
 
 if __name__ == '__main__':
     print('backupAssistant.py start!')
 
     configJsonPath = os.path.join(os.getcwd(), 'config/config.json')
-    configData = None
+    configInfo = None
     try:
         with open(configJsonPath, 'r') as f:
-            configData = json.load(f)
+            configInfo = json.load(f)
     except Exception as exp:
         print(f'IO Error on config.json:' + str(exp))
 
-    if configData is None:
+    if configInfo is None:
         print('Cannot find config.json!')
         exit(1)
 
+    s_api_id = configInfo['api_id']
+    s_api_hash = configInfo['api_hash']
+    s_session_name = configInfo['session_name']
+    s_flood_wait_sec = configInfo['flood_wait_sec']
+
+    # start tg client
+    session_file = os.path.join(os.getcwd(), "config/" + s_session_name + '.session')
+    print('Using telegram session file:' + session_file)
+
+    if not os.path.exists(session_file):
+        print("Please run getSession.py to get the session file and restart the container")
+        while True:
+            sleep(1000000)
+
+    s_tgclient = TelegramClient(session_file, s_api_id, s_api_hash)
+    s_tgclient.start()
+
     myObserver = Observer()
-    scanWorkers = []
-    for configDict in configData:
+    watchdogWorkers = []
+    for configDict in configInfo['target_paths']:
         insertQueue = queue.Queue()  # for insert row in multithread
         worker = ScanWorker(configDict, insertQueue)
 
-        # initial scan
-        if worker.scanFolder():
-            if 'watchdog' in configDict and configDict['watchdog']:
-                scanWorkers.append(worker)
-                # create watchdog and insert new file to queue on event
-                myObserver.schedule(WatchDogWorker(insertQueue), path=worker.target_path, recursive=True)
-        else:
-            print("Error when scaning folder...stop this worker")
+        if 'scan_folder' in configDict and configDict['scan_folder']:
+            if not worker.scanFolder():
+                print("Error when scaning folder...")
 
-    print("Done scanning all folders")
-    if len(scanWorkers) > 0:
+        if 'watchdog' in configDict and configDict['watchdog']:
+            watchdogWorkers.append(worker)
+            # create watchdog and insert new file to queue on event
+            # myObserver.schedule(WatchDogWorker(insertQueue), path=worker.target_path, recursive=True)
+
+    if len(watchdogWorkers) > 0:
         print("Start watchdog")
         myObserver.start()
         while True:
             try:
-                time.sleep(5)
-                for worker in scanWorkers:
-                    worker.workOnQueue()
+                allQueueClear = True
+                for worker in watchdogWorkers:
+                    if not worker.workOnQueue():  # queue not empty
+                        allQueueClear = False
+                if allQueueClear:
+                    time.sleep(5)
+
             except Exception as ex:
-                for worker in scanWorkers:
-                    worker.cleanUp()
                 myObserver.stop()
                 print(str(ex))
-                exit(1)
+
+    s_tgclient.disconnect()
+
     print("End of script")
     exit(0)

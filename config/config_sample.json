@@ -1,12 +1,15 @@
-[
-  {
-    "api_id" : 1234,
-    "api_hash" : "tg api hash",
-    "tg_channel" : "me or invite link",
-    "session_name" : "anyname",
-    "target_path" : "./mount_folder",
-    "flood_wait_sec" : 6,
-    "watchdog" : false,
-    "force_send_file" : true
-  }
-]
+{
+  "api_id" : 1234,
+  "api_hash" : "tg api hash",
+  "session_name" : "anyname",
+  "flood_wait_sec" : 6,
+  "target_paths" : [
+    {
+      "tg_channel" : "me or invite link",
+      "target_path" : "/app/mount_folder",
+      "scan_folder" : true,
+      "watchdog" : false,
+      "force_send_file" : true
+    }
+  ]
+}

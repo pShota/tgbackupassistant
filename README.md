@@ -22,18 +22,21 @@ docker pull pshota/tgbackupassistant:x86_64-0.3
 3. setup config/config.json as following:
 
 ```json
-[
-  {
-    "api_id" : <app id>,
-    "api_hash" : "<app hash>",
-    "tg_channel" : "'me' or a invite link",
-    "session_name" : "<session name>",
-    "target_path" : "./mount_folder",
-    "flood_wait_sec" : 6,
-    "watchdog" : false,
-    "force_send_file" : true
-  }
-]
+{
+  "api_id" : <app id>,
+  "api_hash" : "<app hash>",
+  "session_name" :  "<session name>",
+  "flood_wait_sec" : 6,
+  "target_paths" : [
+    {
+      "tg_channel" : "me or invite link",
+      "target_path" : "/app/mount_folder",
+      "scan_folder" : true,
+      "watchdog" : false,
+      "force_send_file" : true
+    }
+  ]
+}
 ```
 
 where:
@@ -48,7 +51,9 @@ full path of `target_path` should set in `volume` path of docker command
 
 `flood_wait_sec` is the second we wait until next upload file perform, too short telegram will stop you from uploading, 6 seconds is usually the best.
 
-the script will first upload all files in the target folder, after that it will go into watchdog mode. Any new file will be automatically upload without restart the script. `watchdog` : true to enable.
+`scan_folder` true to scan all files and upload of target_folder
+
+`watchdog` : true to enable file monitoring
 
 `force_send_file` will force all file to send as it is without any compression.
 
