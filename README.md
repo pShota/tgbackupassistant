@@ -112,4 +112,4 @@ after login, it generated a session file `<session name>.session` in /app/config
 
 4. only one Telegram account can use per container
 
-5. this script needs to run as root, as it apply `sysctl fs.inotify.max_user_watches=1048576` to increase limit in the beginning
+5. you need to add `sysctl fs.inotify.max_user_watches=1048576` as a boot up schedule task in Synology, run as root

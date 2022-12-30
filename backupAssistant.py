@@ -9,7 +9,6 @@ import time
 import queue
 import re
 import shutil
-import subprocess
 
 from pyffmpeg import FFmpeg
 import PIL.Image
@@ -330,13 +329,6 @@ class ScanWorker:
 
 if __name__ == '__main__':
     flush_print('backupAssistant.py start!')
-
-    flush_print('Set fs.inotify.max_user_watches for Synology')
-    cp = subprocess.run([
-        "sysctl",
-        "fs.inotify.max_user_watches=1048576"
-    ], universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    flush_print(cp.stderr)
 
     configJsonPath = os.path.join(os.getcwd(), 'config/config.json')
     configInfo = None
