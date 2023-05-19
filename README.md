@@ -65,6 +65,9 @@ full path of `target_path` should set in `volume` path of docker command
 
 `force_send_file` will force all file to send as file without any compression.
 
+#### 3. Create config folder
+
+and put config.json in it.
 This config.json will map to container file /app/config/config.json
 
 ---
