@@ -21,12 +21,17 @@ from watchdog.events import FileSystemEventHandler
 s_api_id = 0
 s_api_hash = 0
 s_session_name = ""
+s_bot_token = ""
 s_tgclient = None
 s_flood_wait_sec = 6
 
 
+
+
+
 def flush_print(text):
     print(text, flush=True)
+
 
 # only track stream file
 class WatchDogWorker(FileSystemEventHandler):
@@ -64,19 +69,20 @@ class ScanWorker:
         self.script_dir = os.getcwd()
         self.queue = queue.Queue()  # for insert row in multithread
         self.tg_channel = configDict['tg_channel']
+        self.chat_id = configDict['chat_id']
         self.target_path = configDict['target_path']
         self.force_send_file = configDict['force_send_file']
         self.temp_folder = os.path.join(self.script_dir, 'tmp')
         self.db_path = os.path.join(self.script_dir, 'config/' + os.path.basename(self.target_path) + ".db")
 
-        # avoid easy flood wait, set entity in api request
-        self.channelEntity = s_tgclient.get_entity(self.tg_channel)
         self.initDB()
 
         # remove old temp folder
         if os.path.exists(self.temp_folder):
             shutil.rmtree(self.temp_folder)
         os.mkdir(self.temp_folder)
+
+        s_tgclient.send_message(self.chat_id, message="<< Report to duty >>")
 
     def initDB(self):
         dbCon = sqlite3.connect(self.db_path)
@@ -92,6 +98,11 @@ class ScanWorker:
         dbCon.commit()
         cur.close()
         dbCon.close()
+
+    def sucideAndReborn(self):
+        # non zero exit code to let docker restart this container
+        s_tgclient.send_message(self.chat_id, message="<<! Exception happened, try restart !>>")
+        exit(-1)
 
     # flush_printing upload progress
     def progressCallback(self, current, total):
@@ -163,7 +174,7 @@ class ScanWorker:
                 image.save(thumbnail)
                 image.close()
                 flush_print("send as file:" + str(sendForFile))
-                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
+                s_tgclient.send_file(self.chat_id, file=fileFullPath, background=True, thumb=thumbnail,
                                         progress_callback=self.progressCallback, force_document=sendForFile)
                 os.remove(thumbnail)
 
@@ -185,13 +196,13 @@ class ScanWorker:
                 image.close()
 
                 flush_print("send as file:" + str(sendForFile))
-                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True, thumb=thumbnail,
+                s_tgclient.send_file(self.chat_id, file=fileFullPath, background=True, thumb=thumbnail,
                                          progress_callback=self.progressCallback, force_document=sendForFile)
                 os.remove(thumbnail)
 
             else:
                 flush_print("send as file:" + str(sendForFile))
-                s_tgclient.send_file(entity=self.channelEntity, file=fileFullPath, background=True,
+                s_tgclient.send_file(self.chat_id, file=fileFullPath, background=True,
                                          progress_callback=self.progressCallback, force_document=sendForFile)
 
             flush_print(f"send file completed sleep for {s_flood_wait_sec} sec")
@@ -210,6 +221,10 @@ class ScanWorker:
             elif "DIMENSIONS" in errStr.upper():
                 flush_print("Image exceed dimensions, Resend as file")
                 self.uploadFileTG(fileFullPath, True)
+            else:
+                #probably disconnect, restart script
+                flush_print("Critical Exception when send file, try restart..")
+                self.sucideAndReborn()
 
         return False
 
@@ -345,19 +360,15 @@ if __name__ == '__main__':
     s_api_id = configInfo['api_id']
     s_api_hash = configInfo['api_hash']
     s_session_name = configInfo['session_name']
+    s_bot_token = configInfo['bot_token']
     s_flood_wait_sec = configInfo['flood_wait_sec']
 
     # start tg client
     session_file = os.path.join(os.getcwd(), "config/" + s_session_name + '.session')
     flush_print('Using telegram session file:' + session_file)
 
-    if not os.path.exists(session_file):
-        flush_print("Please run getSession.py to get the session file and restart the container")
-        while True:
-            sleep(1000000)
+    s_tgclient = TelegramClient('bot', int(s_api_id), s_api_hash).start(bot_token=s_bot_token)
 
-    s_tgclient = TelegramClient(session_file, s_api_id, s_api_hash)
-    s_tgclient.start()
 
     scanWorkers = []
     myObserver = Observer()
